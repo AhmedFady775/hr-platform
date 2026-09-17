@@ -1,5 +1,6 @@
 using HrPlatform.Api.Data.LeaveRequests;
 using HrPlatform.Api.Services.Employees;
+using HrPlatform.Api.Services.LeaveRequests;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +24,8 @@ builder.Services.AddHttpClient<IEmployeeClient, EmployeeClient>(client =>
     client.BaseAddress = new Uri(builder.Configuration["EmployeeApi:BaseUrl"] ?? "https://dummyjson.com/");
     client.Timeout = TimeSpan.FromSeconds(5);
 });
+
+builder.Services.AddScoped<ILeaveRequestService, LeaveRequestService>();
 
 var app = builder.Build();
 
