@@ -16,6 +16,15 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: hrplatform-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   api:
     build:
       context: .
@@ -24,9 +33,13 @@ services:
     depends_on:
       sqlserver:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       ConnectionStrings__HrPlatformDb: "Server=sqlserver,1433;Database=${DB_NAME:-HrPlatformDb};User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;"
+      ConnectionStrings__Redis: "redis:6379"
+      EmployeeApi__BaseUrl: "${EMPLOYEE_API_BASE_URL:-https://dummyjson.com/}"
     ports:
       - "${API_PORT:-8090}:8080"
 
