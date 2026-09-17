@@ -1,0 +1,264 @@
+@page "/leave-requests"
+@attribute [Authorize(Roles = "HR")]
+@rendermode InteractiveServer
+@using HrPlatform.Contracts.Enums.LeaveRequests
+@using HrPlatform.Contracts.Dtos.LeaveRequests
+@using HrPlatform.Web.Services
+@using Microsoft.AspNetCore.Authorization
+@inject LeaveRequestsApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Leave Requests — HrPlatform</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Leave requests</h1>
+        <p>Review, approve, and track time-off requests across the team.</p>
+    </div>
+
+    <div class="stat-chips">
+        <span class="stat-chip stat-chip--pending"><strong>@_pendingCount</strong> pending</span>
+        <span class="stat-chip stat-chip--approved"><strong>@_approvedCount</strong> approved</span>
+        <span class="stat-chip stat-chip--rejected"><strong>@_rejectedCount</strong> rejected</span>
+    </div>
+</div>
+
+@if (_globalError is not null)
+{
+    <div class="alert alert-danger d-flex justify-content-between align-items-center" role="alert">
+        <span>⚠ @_globalError</span>
+        <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _globalError = null"></button>
+    </div>
+}
+
+<div class="filter-bar">
+    <div class="filter-pills">
+        <button type="button" class="filter-pill @(_statusFilter == "" ? "is-active" : "")" @onclick='() => SetStatusFilterAsync("")'>All</button>
+        @foreach (var status in Enum.GetValues<LeaveStatus>())
+        {
+            <button type="button" class="filter-pill @(_statusFilter == status.ToString() ? "is-active" : "")" @onclick="() => SetStatusFilterAsync(status.ToString())">@status</button>
+        }
+    </div>
+
+    @if (_loading)
+    {
+        <span class="inline-loading"><span class="spinner"></span> Refreshing…</span>
+    }
+</div>
+
+<div class="card table-card">
+    @if (_loading && _requests.Count == 0)
+    {
+        <div class="table-responsive">
+            <table class="table leave-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Dates</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Reviewer note</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < 6; i++)
+                    {
+                        <tr>
+                            <td>
+                                <div class="employee-cell">
+                                    <span class="skeleton skeleton-circle"></span>
+                                    <span class="skeleton skeleton-text" style="width:7rem"></span>
+                                </div>
+                            </td>
+                            <td><span class="skeleton skeleton-text" style="width:9rem"></span></td>
+                            <td><span class="skeleton skeleton-text" style="width:4rem"></span></td>
+                            <td><span class="skeleton skeleton-text" style="width:5rem"></span></td>
+                            <td><span class="skeleton skeleton-text" style="width:6rem"></span></td>
+                            <td></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else if (_loadFailed)
+    {
+        <div class="state-panel">
+            <span class="state-panel__icon">⚠️</span>
+            <span>Couldn't load leave requests.</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="ReloadAsync">Retry</button>
+        </div>
+    }
+    else if (!_loading && _requests.Count == 0)
+    {
+        <div class="state-panel">
+            <span class="state-panel__icon">🗂️</span>
+            <span>No leave requests found for this filter.</span>
+        </div>
+    }
+    else
+    {
+        <div class="table-responsive">
+            <table class="table leave-table">
+                <thead>
+                    <tr>
+                        <th>Employee</th>
+                        <th>Dates</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Reviewer note</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var req in _requests)
+                    {
+                        <tr>
+                            <td>
+                                <div class="employee-cell">
+                                    <span class="avatar" style="background:@AvatarColor(req.EmployeeName ?? req.EmployeeId.ToString())">@Initials(req.EmployeeName)</span>
+                                    <div>
+                                        <div class="employee-name">@(req.EmployeeName ?? $"#{req.EmployeeId}")</div>
+                                        <div class="employee-dept">@req.EmployeeDepartment</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@req.StartDate.ToString("MMM d, yyyy") &ndash; @req.EndDate.ToString("MMM d, yyyy")</td>
+                            <td><span class="type-pill">@req.Type</span></td>
+                            <td><span class="status-badge @StatusBadgeClass(req.Status)">@req.Status</span></td>
+                            <td class="text-muted">@(req.ReviewerNote ?? "—")</td>
+                            <td></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex justify-content-center pb-3">
+            <nav>
+                <ul class="pagination">
+                    <li class="page-item @(_page <= 1 ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => ChangePageAsync(_page - 1)">‹ Prev</button>
+                    </li>
+                    <li class="page-item disabled"><span class="page-link">Page @_page of @TotalPages</span></li>
+                    <li class="page-item @(_page >= TotalPages ? "disabled" : "")">
+                        <button class="page-link" @onclick="() => ChangePageAsync(_page + 1)">Next ›</button>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    }
+</div>
+
+@code {
+    private List<LeaveRequestDto> _requests = new();
+
+    private bool _loading;
+    private bool _loadFailed;
+    private string? _globalError;
+
+    private string _statusFilter = "";
+    private int _page = 1;
+    private const int PageSize = 10;
+    private int _totalCount;
+
+    private int _pendingCount;
+    private int _approvedCount;
+    private int _rejectedCount;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
+
+    private static readonly string[] AvatarPalette =
+    {
+        "#6366f1", "#059669", "#d97706", "#db2777", "#0891b2", "#7c3aed", "#dc2626", "#16a34a"
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.WhenAll(ReloadAsync(), LoadStatCountsAsync());
+    }
+
+    private async Task LoadStatCountsAsync()
+    {
+        try
+        {
+            var pending = Api.GetLeaveRequestsAsync(LeaveStatus.Pending, null, 1, 1);
+            var approved = Api.GetLeaveRequestsAsync(LeaveStatus.Approved, null, 1, 1);
+            var rejected = Api.GetLeaveRequestsAsync(LeaveStatus.Rejected, null, 1, 1);
+            await Task.WhenAll(pending, approved, rejected);
+
+            _pendingCount = pending.Result.TotalCount;
+            _approvedCount = approved.Result.TotalCount;
+            _rejectedCount = rejected.Result.TotalCount;
+        }
+        catch (ApiException)
+        {
+            // the table already surfaces load failures, these counters are just a nice-to-have
+        }
+    }
+
+    private async Task SetStatusFilterAsync(string status)
+    {
+        _statusFilter = status;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _loadFailed = false;
+        StateHasChanged();
+        try
+        {
+            LeaveStatus? status = string.IsNullOrEmpty(_statusFilter) ? null : Enum.Parse<LeaveStatus>(_statusFilter);
+            var result = await Api.GetLeaveRequestsAsync(status, null, _page, PageSize);
+            _requests = result.Items;
+            _totalCount = result.TotalCount;
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to load leave requests: {ex.Message}";
+            _loadFailed = true;
+            _requests = new();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ChangePageAsync(int newPage)
+    {
+        if (newPage < 1 || newPage > TotalPages) return;
+        _page = newPage;
+        await ReloadAsync();
+    }
+
+    private static string StatusBadgeClass(LeaveStatus status) => status switch
+    {
+        LeaveStatus.Approved => "status-badge--approved",
+        LeaveStatus.Rejected => "status-badge--rejected",
+        _ => "status-badge--pending"
+    };
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+        };
+    }
+
+    private static string AvatarColor(string seed)
+    {
+        var hash = 0;
+        foreach (var c in seed) hash = (hash * 31 + c) & int.MaxValue;
+        return AvatarPalette[hash % AvatarPalette.Length];
+    }
+}
