@@ -196,7 +196,16 @@
                             <td><span class="type-pill">@req.Type</span></td>
                             <td><span class="status-badge @StatusBadgeClass(req.Status)">@req.Status</span></td>
                             <td class="text-muted">@(req.ReviewerNote ?? "—")</td>
-                            <td></td>
+                            <td>
+                                @if (req.Status == LeaveStatus.Pending)
+                                {
+                                    <div class="row-actions">
+                                        <button class="icon-btn icon-btn--approve" title="Approve" @onclick="() => OpenReviewModal(req, LeaveStatus.Approved)" disabled="@_actingOn.Contains(req.Id)">✓</button>
+                                        <button class="icon-btn icon-btn--reject" title="Reject" @onclick="() => OpenReviewModal(req, LeaveStatus.Rejected)" disabled="@_actingOn.Contains(req.Id)">✕</button>
+                                        <button class="icon-btn icon-btn--delete" title="Delete" @onclick="() => DeleteAsync(req.Id)" disabled="@_actingOn.Contains(req.Id)">🗑</button>
+                                    </div>
+                                }
+                            </td>
                         </tr>
                     }
                 </tbody>
@@ -219,9 +228,37 @@
     }
 </div>
 
+@if (_reviewTarget is not null)
+{
+    <div class="modal-backdrop-custom" @onclick="CloseReviewModal">
+        <div class="modal-card" @onclick:stopPropagation="true">
+            <h2>@(_reviewStatus == LeaveStatus.Approved ? "Approve" : "Reject") request</h2>
+            <p class="text-muted">
+                @_reviewTarget.EmployeeName · @_reviewTarget.StartDate.ToString("MMM d") &ndash; @_reviewTarget.EndDate.ToString("MMM d, yyyy")
+            </p>
+
+            <label class="form-label">Reviewer note <span class="text-muted">(optional)</span></label>
+            <textarea class="form-control" rows="3" maxlength="500" placeholder="e.g. Approved - coverage confirmed" @bind="_reviewerNote"></textarea>
+            <div class="char-counter">@_reviewerNote.Length/500</div>
+
+            <div class="modal-card__actions">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseReviewModal" disabled="@_reviewSubmitting">Cancel</button>
+                <button type="button" class="btn @(_reviewStatus == LeaveStatus.Approved ? "btn-success" : "btn-warning")" @onclick="ConfirmReviewAsync" disabled="@_reviewSubmitting">
+                    @if (_reviewSubmitting)
+                    {
+                        <span class="spinner me-1"></span>
+                    }
+                    Confirm @(_reviewStatus == LeaveStatus.Approved ? "approval" : "rejection")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private List<LeaveRequestDto> _requests = new();
     private List<EmployeeDto> _employees = new();
+    private readonly HashSet<int> _actingOn = new();
 
     private bool _loading;
     private bool _loadFailed;
@@ -242,6 +279,11 @@
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
 
     private NewLeaveRequestModel _newRequest = new();
+
+    private LeaveRequestDto? _reviewTarget;
+    private LeaveStatus _reviewStatus;
+    private string _reviewerNote = string.Empty;
+    private bool _reviewSubmitting;
 
     private static readonly string[] AvatarPalette =
     {
@@ -355,6 +397,64 @@
         finally
         {
             _submitting = false;
+        }
+    }
+
+    private void OpenReviewModal(LeaveRequestDto request, LeaveStatus status)
+    {
+        _reviewTarget = request;
+        _reviewStatus = status;
+        _reviewerNote = string.Empty;
+    }
+
+    private void CloseReviewModal()
+    {
+        if (_reviewSubmitting) return;
+        _reviewTarget = null;
+    }
+
+    private async Task ConfirmReviewAsync()
+    {
+        if (_reviewTarget is null) return;
+
+        var id = _reviewTarget.Id;
+        _reviewSubmitting = true;
+        _actingOn.Add(id);
+        try
+        {
+            var note = string.IsNullOrWhiteSpace(_reviewerNote) ? null : _reviewerNote.Trim();
+            await Api.UpdateStatusAsync(id, new UpdateLeaveStatusDto { Status = _reviewStatus, ReviewerNote = note });
+            _reviewTarget = null;
+            await Task.WhenAll(ReloadAsync(), LoadStatCountsAsync());
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to update status: {ex.Message}";
+            if (ex.StatusCode == 401) Navigation.NavigateTo("/logout", forceLoad: true);
+        }
+        finally
+        {
+            _reviewSubmitting = false;
+            _actingOn.Remove(id);
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        _actingOn.Add(id);
+        try
+        {
+            await Api.DeleteLeaveRequestAsync(id);
+            await Task.WhenAll(ReloadAsync(), LoadStatCountsAsync());
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to delete leave request: {ex.Message}";
+            if (ex.StatusCode == 401) Navigation.NavigateTo("/logout", forceLoad: true);
+        }
+        finally
+        {
+            _actingOn.Remove(id);
         }
     }
 
