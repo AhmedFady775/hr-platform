@@ -1,4 +1,5 @@
 using HrPlatform.Api.Controllers.Auth;
+using HrPlatform.Api.Models.Auth;
 using HrPlatform.Api.Services.Auth;
 using HrPlatform.Contracts.Dtos.Auth;
 using HrPlatform.Contracts.Dtos.Common;
@@ -14,12 +15,25 @@ public class AuthControllerTests
             ($"fake-token-for-{username}", DateTime.UtcNow.AddHours(1));
     }
 
-    [Fact]
-    public void Login_ReturnsUnauthorizedForBadCredentials()
+    private class FakeUserStore : IUserStore
     {
-        var controller = new AuthController(new FakeTokenService());
+        public Task<User?> ValidateCredentialsAsync(string username, string password, CancellationToken ct = default)
+        {
+            if (string.Equals(username, "hr@company.com", StringComparison.OrdinalIgnoreCase) && password == "Password123!")
+            {
+                return Task.FromResult<User?>(new User { Username = "hr@company.com", Role = "HR" });
+            }
 
-        var result = controller.Login(new LoginRequestDto { Username = "nobody@company.com", Password = "wrong" });
+            return Task.FromResult<User?>(null);
+        }
+    }
+
+    [Fact]
+    public async Task Login_ReturnsUnauthorizedForBadCredentials()
+    {
+        var controller = new AuthController(new FakeUserStore(), new FakeTokenService());
+
+        var result = await controller.Login(new LoginRequestDto { Username = "nobody@company.com", Password = "wrong" });
 
         var unauthorized = Assert.IsType<UnauthorizedObjectResult>(result.Result);
         var error = Assert.IsType<ErrorResponseDto>(unauthorized.Value);
@@ -27,11 +41,11 @@ public class AuthControllerTests
     }
 
     [Fact]
-    public void Login_ReturnsTokenAndRoleForValidHrCredentials()
+    public async Task Login_ReturnsTokenAndRoleForValidHrCredentials()
     {
-        var controller = new AuthController(new FakeTokenService());
+        var controller = new AuthController(new FakeUserStore(), new FakeTokenService());
 
-        var result = controller.Login(new LoginRequestDto { Username = "hr@company.com", Password = "Password123!" });
+        var result = await controller.Login(new LoginRequestDto { Username = "hr@company.com", Password = "Password123!" });
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var response = Assert.IsType<LoginResponseDto>(ok.Value);
@@ -41,11 +55,11 @@ public class AuthControllerTests
     }
 
     [Fact]
-    public void Login_UsernameIsCaseInsensitive()
+    public async Task Login_UsernameIsCaseInsensitive()
     {
-        var controller = new AuthController(new FakeTokenService());
+        var controller = new AuthController(new FakeUserStore(), new FakeTokenService());
 
-        var result = controller.Login(new LoginRequestDto { Username = "HR@COMPANY.COM", Password = "Password123!" });
+        var result = await controller.Login(new LoginRequestDto { Username = "HR@COMPANY.COM", Password = "Password123!" });
 
         Assert.IsType<OkObjectResult>(result.Result);
     }

@@ -178,12 +178,13 @@ dotnet test tests/HrPlatform.Tests/HrPlatform.Tests.csproj
   global `AuthorizationOptions.FallbackPolicy` (`RequireAuthenticatedUser()` +
   `RequireRole("HR")`) that applies to every endpoint by default; `POST
   /api/auth/login` is the one `[AllowAnonymous]` exception, since it's how you get a
-  token in the first place. Tokens come from that login endpoint against two
-  hardcoded demo accounts in `Api/Services/Auth/DemoUsers.cs` (`hr@company.com` /
-  `Password123!` role `HR`, `employee@company.com` / `Password123!` role `Employee`,
-  kept around specifically to demonstrate the `403` path) — there's no real user
-  store in scope, and this is documented inline as a stand-in. A missing/invalid
-  token returns `401`, a valid token with the wrong role returns `403`, both in the
+  token in the first place. Tokens come from that login endpoint against a `Users`
+  table in the same SQL Server database as everything else (`Api/Services/Auth/UserStore.cs`,
+  `Api/Models/Auth/User.cs`), with passwords hashed via `PasswordHasher<User>` — nothing
+  is checked against a plaintext value. `DbInitializer` seeds it with two accounts on
+  first run (`hr@company.com` / `Password123!` role `HR`, `employee@company.com` /
+  `Password123!` role `Employee`, the second kept around specifically to demonstrate the
+  `403` path). A missing/invalid token returns `401`, a valid token with the wrong role returns `403`, both in the
   same `{ "error": "..." }` shape as everything else (see `JwtBearerEvents.OnChallenge`
   and `ApiAuthorizationMiddlewareResultHandler` in `Program.cs`).
 

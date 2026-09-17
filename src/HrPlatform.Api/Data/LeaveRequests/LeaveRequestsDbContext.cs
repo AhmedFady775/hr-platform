@@ -1,3 +1,4 @@
+using HrPlatform.Api.Models.Auth;
 using HrPlatform.Api.Models.LeaveRequests;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,9 +11,20 @@ public class LeaveRequestsDbContext : DbContext
     }
 
     public DbSet<LeaveRequest> LeaveRequests => Set<LeaveRequest>();
+    public DbSet<User> Users => Set<User>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("Users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Username).IsRequired().HasMaxLength(256);
+            entity.Property(e => e.PasswordHash).IsRequired();
+            entity.Property(e => e.Role).IsRequired().HasMaxLength(50);
+            entity.HasIndex(e => e.Username).IsUnique();
+        });
+
         modelBuilder.Entity<LeaveRequest>(entity =>
         {
             entity.ToTable("LeaveRequests", t =>

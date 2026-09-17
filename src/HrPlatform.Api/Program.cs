@@ -68,6 +68,7 @@ builder.Services.AddHttpClient<IEmployeeClient, EmployeeClient>(client =>
 });
 
 builder.Services.AddScoped<ILeaveRequestService, LeaveRequestService>();
+builder.Services.AddScoped<IUserStore, UserStore>();
 builder.Services.AddSingleton<ITokenService, TokenService>();
 
 builder.Services.AddCors(options =>

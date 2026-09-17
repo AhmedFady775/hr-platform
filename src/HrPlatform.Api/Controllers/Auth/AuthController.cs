@@ -6,15 +6,16 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace HrPlatform.Api.Controllers.Auth;
 
-// issues JWTs for the demo accounts in DemoUsers -- stands in for a real identity provider
 [ApiController]
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
+    private readonly IUserStore _userStore;
     private readonly ITokenService _tokenService;
 
-    public AuthController(ITokenService tokenService)
+    public AuthController(IUserStore userStore, ITokenService tokenService)
     {
+        _userStore = userStore;
         _tokenService = tokenService;
     }
 
@@ -22,9 +23,9 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     [ProducesResponseType(typeof(LoginResponseDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status401Unauthorized)]
-    public ActionResult<LoginResponseDto> Login([FromBody] LoginRequestDto dto)
+    public async Task<ActionResult<LoginResponseDto>> Login([FromBody] LoginRequestDto dto)
     {
-        var user = DemoUsers.Find(dto.Username, dto.Password);
+        var user = await _userStore.ValidateCredentialsAsync(dto.Username, dto.Password);
         if (user is null)
         {
             return Unauthorized(new ErrorResponseDto { Error = "Invalid username or password." });

@@ -1,5 +1,7 @@
+using HrPlatform.Api.Models.Auth;
 using HrPlatform.Api.Models.LeaveRequests;
 using HrPlatform.Contracts.Enums.LeaveRequests;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace HrPlatform.Api.Data.LeaveRequests;
@@ -19,6 +21,8 @@ public static class DbInitializer
             await db.Database.EnsureCreatedAsync();
         }
 
+        await SeedUsersAsync(db);
+
         if (await db.LeaveRequests.AnyAsync())
         {
             return;
@@ -37,6 +41,24 @@ public static class DbInitializer
             new LeaveRequest { EmployeeId = 10, StartDate = new DateOnly(2026, 4, 15), EndDate = new DateOnly(2026, 4, 16), Type = LeaveType.Vacation, Status = LeaveStatus.Rejected, CreatedAt = new DateTime(2026, 3, 25, 15, 10, 0, DateTimeKind.Utc), ReviewerNote = "Rejected - conflicts with quarter close" }
         );
 
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedUsersAsync(LeaveRequestsDbContext db)
+    {
+        if (await db.Users.AnyAsync())
+        {
+            return;
+        }
+
+        var hasher = new PasswordHasher<User>();
+        var hrUser = new User { Username = "hr@company.com", Role = "HR" };
+        hrUser.PasswordHash = hasher.HashPassword(hrUser, "Password123!");
+
+        var employeeUser = new User { Username = "employee@company.com", Role = "Employee" };
+        employeeUser.PasswordHash = hasher.HashPassword(employeeUser, "Password123!");
+
+        db.Users.AddRange(hrUser, employeeUser);
         await db.SaveChangesAsync();
     }
 }
