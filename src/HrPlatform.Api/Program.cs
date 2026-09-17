@@ -1,6 +1,8 @@
 using System.Text;
 using HrPlatform.Api.Data.LeaveRequests;
+using HrPlatform.Api.Middleware;
 using HrPlatform.Api.Services.Auth;
+using HrPlatform.Contracts.Dtos.Common;
 using HrPlatform.Api.Services.Employees;
 using HrPlatform.Api.Services.LeaveRequests;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -53,6 +55,20 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ClockSkew = TimeSpan.FromSeconds(30)
     };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnChallenge = async context =>
+        {
+            context.HandleResponse();
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            context.Response.ContentType = "application/json";
+            await context.Response.WriteAsJsonAsync(new ErrorResponseDto
+            {
+                Error = "Authentication required. Sign in with an HR account."
+            });
+        }
+    };
 });
 
 builder.Services.AddAuthorization(options =>
@@ -62,8 +78,11 @@ builder.Services.AddAuthorization(options =>
         .RequireRole("HR")
         .Build();
 });
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ApiAuthorizationMiddlewareResultHandler>();
 
 var app = builder.Build();
+
+app.UseMiddleware<ExceptionHandlingMiddleware>();
 
 app.UseHttpsRedirection();
 
