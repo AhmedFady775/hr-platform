@@ -1,6 +1,8 @@
 @page "/leave-requests"
 @attribute [Authorize(Roles = "HR")]
 @rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using HrPlatform.Contracts.Dtos.Employees
 @using HrPlatform.Contracts.Enums.LeaveRequests
 @using HrPlatform.Contracts.Dtos.LeaveRequests
 @using HrPlatform.Web.Services
@@ -30,6 +32,72 @@
         <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _globalError = null"></button>
     </div>
 }
+
+<div class="card mb-4">
+    <div class="card-header">📝 New leave request</div>
+    <div class="card-body">
+        <EditForm Model="_newRequest" OnValidSubmit="SubmitNewRequestAsync">
+            <DataAnnotationsValidator />
+            <div class="row g-3 align-items-start">
+                <div class="col-md-3">
+                    <label class="form-label">Employee</label>
+                    @if (_employeesLoading)
+                    {
+                        <span class="skeleton" style="display:block;width:100%;height:2.4rem;border-radius:0.55rem;"></span>
+                    }
+                    else if (_employeesLoadFailed)
+                    {
+                        <div class="inline-loading text-danger">
+                            ⚠ Couldn't load employees.
+                            <button type="button" class="btn btn-sm btn-link p-0 ms-1" @onclick="LoadEmployeesAsync">Retry</button>
+                        </div>
+                    }
+                    else
+                    {
+                        <InputSelect class="form-select" @bind-Value="_newRequest.EmployeeId">
+                            <option value="0">Select an employee…</option>
+                            @foreach (var emp in _employees)
+                            {
+                                <option value="@emp.Id">@emp.FullName — @emp.Department</option>
+                            }
+                        </InputSelect>
+                    }
+                    <ValidationMessage For="@(() => _newRequest.EmployeeId)" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Start date</label>
+                    <InputDate class="form-control" @bind-Value="_newRequest.StartDate" />
+                    <div class="validation-message"></div>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">End date</label>
+                    <InputDate class="form-control" @bind-Value="_newRequest.EndDate" />
+                    <ValidationMessage For="@(() => _newRequest.EndDate)" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">Type</label>
+                    <InputSelect class="form-select" @bind-Value="_newRequest.Type">
+                        @foreach (var type in Enum.GetValues<LeaveType>())
+                        {
+                            <option value="@type">@type</option>
+                        }
+                    </InputSelect>
+                    <div class="validation-message"></div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label form-label--invisible" aria-hidden="true">Action</label>
+                    <button type="submit" class="btn btn-primary w-100" disabled="@_submitting">
+                        @if (_submitting)
+                        {
+                            <span class="spinner me-1"></span>
+                        }
+                        @(_submitting ? "Submitting…" : "Submit request")
+                    </button>
+                </div>
+            </div>
+        </EditForm>
+    </div>
+</div>
 
 <div class="filter-bar">
     <div class="filter-pills">
@@ -153,9 +221,13 @@
 
 @code {
     private List<LeaveRequestDto> _requests = new();
+    private List<EmployeeDto> _employees = new();
 
     private bool _loading;
     private bool _loadFailed;
+    private bool _employeesLoading;
+    private bool _employeesLoadFailed;
+    private bool _submitting;
     private string? _globalError;
 
     private string _statusFilter = "";
@@ -169,6 +241,8 @@
 
     private int TotalPages => Math.Max(1, (int)Math.Ceiling(_totalCount / (double)PageSize));
 
+    private NewLeaveRequestModel _newRequest = new();
+
     private static readonly string[] AvatarPalette =
     {
         "#6366f1", "#059669", "#d97706", "#db2777", "#0891b2", "#7c3aed", "#dc2626", "#16a34a"
@@ -176,7 +250,29 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await LoadEmployeesAsync();
         await Task.WhenAll(ReloadAsync(), LoadStatCountsAsync());
+    }
+
+    private async Task LoadEmployeesAsync()
+    {
+        _employeesLoading = true;
+        _employeesLoadFailed = false;
+        StateHasChanged();
+        try
+        {
+            var result = await Api.GetEmployeesAsync(limit: 20);
+            _employees = result.Employees;
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to load employees: {ex.Message}";
+            _employeesLoadFailed = true;
+        }
+        finally
+        {
+            _employeesLoading = false;
+        }
     }
 
     private async Task LoadStatCountsAsync()
@@ -236,6 +332,32 @@
         await ReloadAsync();
     }
 
+    private async Task SubmitNewRequestAsync()
+    {
+        _submitting = true;
+        try
+        {
+            await Api.CreateLeaveRequestAsync(new CreateLeaveRequestDto
+            {
+                EmployeeId = _newRequest.EmployeeId,
+                StartDate = DateOnly.FromDateTime(_newRequest.StartDate),
+                EndDate = DateOnly.FromDateTime(_newRequest.EndDate),
+                Type = _newRequest.Type
+            });
+            _newRequest = new NewLeaveRequestModel();
+            _page = 1;
+            await Task.WhenAll(ReloadAsync(), LoadStatCountsAsync());
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to submit leave request: {ex.Message}";
+        }
+        finally
+        {
+            _submitting = false;
+        }
+    }
+
     private static string StatusBadgeClass(LeaveStatus status) => status switch
     {
         LeaveStatus.Approved => "status-badge--approved",
@@ -260,5 +382,26 @@
         var hash = 0;
         foreach (var c in seed) hash = (hash * 31 + c) & int.MaxValue;
         return AvatarPalette[hash % AvatarPalette.Length];
+    }
+
+    // mirrors CreateLeaveRequestDto's rules so we get a field-level error before hitting the API
+    private class NewLeaveRequestModel : IValidatableObject
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Select an employee.")]
+        public int EmployeeId { get; set; }
+
+        public DateTime StartDate { get; set; } = DateTime.Today;
+        public DateTime EndDate { get; set; } = DateTime.Today;
+        public LeaveType Type { get; set; } = LeaveType.Vacation;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (EndDate < StartDate)
+            {
+                yield return new ValidationResult(
+                    "End date must be on or after the start date.",
+                    new[] { nameof(EndDate) });
+            }
+        }
     }
 }
