@@ -1,6 +1,20 @@
-﻿<Router AppAssembly="typeof(Program).Assembly">
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+
+<Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                @{ RedirectToLogin(); }
+            </NotAuthorized>
+        </AuthorizeRouteView>
         <FocusOnNavigate RouteData="routeData" Selector="h1" />
     </Found>
 </Router>
+
+@code {
+    // Covers both "not signed in" and "signed in but not HR" -- either way, the only place to go
+    // is /login. This fires during the request that loaded the page (this component itself has
+    // no @rendermode), so it's a normal HTTP redirect, not a client-side navigation.
+    private void RedirectToLogin() => Navigation.NavigateTo("/login");
+}
