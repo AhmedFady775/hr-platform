@@ -1,0 +1,207 @@
+@page "/"
+@attribute [Authorize(Roles = "HR")]
+@rendermode InteractiveServer
+@using HrPlatform.Contracts.Enums.LeaveRequests
+@using HrPlatform.Contracts.Dtos.LeaveRequests
+@using HrPlatform.Web.Services
+@using Microsoft.AspNetCore.Authorization
+@inject LeaveRequestsApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Dashboard — HrPlatform</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <h1>Dashboard</h1>
+        <p>An overview of what's happening across HrPlatform.</p>
+    </div>
+</div>
+
+@if (_globalError is not null)
+{
+    <div class="alert alert-danger d-flex justify-content-between align-items-center" role="alert">
+        <span>⚠ @_globalError</span>
+        <button type="button" class="btn-close" aria-label="Dismiss" @onclick="() => _globalError = null"></button>
+    </div>
+}
+
+@if (_loading)
+{
+    <div class="stat-cards">
+        @for (var i = 0; i < 4; i++)
+        {
+            <div class="stat-card">
+                <span class="skeleton skeleton-text--sm" style="width:5.5rem"></span>
+                <span class="skeleton skeleton-text" style="width:3.2rem;height:1.75rem"></span>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <div class="stat-cards">
+        <div class="stat-card">
+            <span class="stat-card__label">Total requests</span>
+            <span class="stat-card__value">@_totalCount</span>
+        </div>
+        <div class="stat-card stat-card--pending">
+            <span class="stat-card__label">Pending</span>
+            <span class="stat-card__value">@_pendingCount</span>
+        </div>
+        <div class="stat-card stat-card--approved">
+            <span class="stat-card__label">Approved</span>
+            <span class="stat-card__value">@_approvedCount</span>
+        </div>
+        <div class="stat-card stat-card--rejected">
+            <span class="stat-card__label">Rejected</span>
+            <span class="stat-card__value">@_rejectedCount</span>
+        </div>
+    </div>
+}
+
+<div class="dashboard-grid">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>🗓️ Recent leave requests</span>
+            <a href="/leave-requests" class="btn btn-sm btn-outline-secondary">View all</a>
+        </div>
+        @if (_loading)
+        {
+            <ul class="activity-list">
+                @for (var i = 0; i < 4; i++)
+                {
+                    <li class="activity-item">
+                        <span class="skeleton skeleton-circle"></span>
+                        <div class="activity-item__body">
+                            <span class="skeleton skeleton-text" style="width:60%"></span>
+                            <span class="skeleton skeleton-text--sm" style="width:40%;margin-top:0.45rem"></span>
+                        </div>
+                        <span class="skeleton skeleton-text--sm" style="width:4rem"></span>
+                    </li>
+                }
+            </ul>
+        }
+        else if (_loadFailed)
+        {
+            <div class="state-panel">
+                <span class="state-panel__icon">⚠️</span>
+                <span>Couldn't load recent activity.</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary mt-2" @onclick="LoadAsync">Retry</button>
+            </div>
+        }
+        else if (_recent.Count == 0)
+        {
+            <div class="state-panel">
+                <span class="state-panel__icon">🗂️</span>
+                <span>No leave requests yet.</span>
+            </div>
+        }
+        else
+        {
+            <ul class="activity-list">
+                @foreach (var req in _recent)
+                {
+                    <li class="activity-item">
+                        <span class="avatar" style="background:@AvatarColor(req.EmployeeName ?? req.EmployeeId.ToString())">@Initials(req.EmployeeName)</span>
+                        <div class="activity-item__body">
+                            <div class="activity-item__title">
+                                @(req.EmployeeName ?? $"#{req.EmployeeId}")
+                                <span class="text-muted">requested</span>
+                                <span class="type-pill">@req.Type</span>
+                            </div>
+                            <div class="activity-item__meta">
+                                @req.StartDate.ToString("MMM d") &ndash; @req.EndDate.ToString("MMM d, yyyy")
+                                · submitted @req.CreatedAt.ToLocalTime().ToString("MMM d, h:mm tt")
+                            </div>
+                        </div>
+                        <span class="status-badge @StatusBadgeClass(req.Status)">@req.Status</span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="card">
+        <div class="card-header">⚡ Quick actions</div>
+        <div class="card-body quick-actions">
+            <a href="/leave-requests" class="btn btn-primary w-100">Submit a leave request</a>
+            <a href="/leave-requests" class="btn btn-outline-secondary w-100">Review pending requests</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<LeaveRequestDto> _recent = new();
+    private bool _loading;
+    private bool _loadFailed;
+    private string? _globalError;
+
+    private int _totalCount;
+    private int _pendingCount;
+    private int _approvedCount;
+    private int _rejectedCount;
+
+    private static readonly string[] AvatarPalette =
+    {
+        "#6366f1", "#059669", "#d97706", "#db2777", "#0891b2", "#7c3aed", "#dc2626", "#16a34a"
+    };
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadFailed = false;
+        StateHasChanged();
+        try
+        {
+            var recent = Api.GetLeaveRequestsAsync(null, null, 1, 5);
+            var pending = Api.GetLeaveRequestsAsync(LeaveStatus.Pending, null, 1, 1);
+            var approved = Api.GetLeaveRequestsAsync(LeaveStatus.Approved, null, 1, 1);
+            var rejected = Api.GetLeaveRequestsAsync(LeaveStatus.Rejected, null, 1, 1);
+            await Task.WhenAll(recent, pending, approved, rejected);
+
+            _recent = recent.Result.Items;
+            _pendingCount = pending.Result.TotalCount;
+            _approvedCount = approved.Result.TotalCount;
+            _rejectedCount = rejected.Result.TotalCount;
+            _totalCount = _pendingCount + _approvedCount + _rejectedCount;
+        }
+        catch (ApiException ex)
+        {
+            _globalError = $"Failed to load dashboard data: {ex.Message}";
+            _loadFailed = true;
+            if (ex.StatusCode == 401) Navigation.NavigateTo("/logout", forceLoad: true);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private static string StatusBadgeClass(LeaveStatus status) => status switch
+    {
+        LeaveStatus.Approved => "status-badge--approved",
+        LeaveStatus.Rejected => "status-badge--rejected",
+        _ => "status-badge--pending"
+    };
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "?",
+            1 => parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant(),
+            _ => $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+        };
+    }
+
+    private static string AvatarColor(string seed)
+    {
+        var hash = 0;
+        foreach (var c in seed) hash = (hash * 31 + c) & int.MaxValue;
+        return AvatarPalette[hash % AvatarPalette.Length];
+    }
+}
