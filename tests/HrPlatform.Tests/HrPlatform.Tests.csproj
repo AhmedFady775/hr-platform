@@ -24,6 +24,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\HrPlatform.Api\HrPlatform.Api.csproj" />
+    <ProjectReference Include="..\..\src\HrPlatform.Web\HrPlatform.Web.csproj">
+      <Aliases>WebAssembly</Aliases>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>
