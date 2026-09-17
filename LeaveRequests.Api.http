@@ -1,0 +1,144 @@
+@baseUrl = https://localhost:7212
+
+### Sign in as HR (demo credentials, see Api/Services/DemoUsers.cs) -> use the returned token below
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "hr@company.com",
+  "password": "Password123!"
+}
+
+### Sign in as a non-HR employee -> valid token, but role "Employee" (every business endpoint below will 403 it)
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "employee@company.com",
+  "password": "Password123!"
+}
+
+### Sign in with bad credentials -> 401
+POST {{baseUrl}}/api/auth/login
+Content-Type: application/json
+
+{
+  "username": "hr@company.com",
+  "password": "wrong-password"
+}
+
+@hrToken = PASTE_HR_TOKEN_HERE
+
+# This is an internal HR-only system: every endpoint below requires "Authorization: Bearer <hrToken>"
+# except login. Omitting it (or using the Employee token) gets 401/403 -- see the two requests
+# at the bottom of this file for that.
+
+### List employees (proxied third-party HR system)
+GET {{baseUrl}}/api/employees?limit=10&skip=0
+Authorization: Bearer {{hrToken}}
+
+### Search employees
+GET {{baseUrl}}/api/employees?search=Emily
+Authorization: Bearer {{hrToken}}
+
+### Get single employee
+GET {{baseUrl}}/api/employees/1
+Authorization: Bearer {{hrToken}}
+
+### List leave requests (paginated)
+GET {{baseUrl}}/api/leave-requests?page=1&pageSize=10
+Authorization: Bearer {{hrToken}}
+
+### List leave requests filtered by status
+GET {{baseUrl}}/api/leave-requests?status=Pending
+Authorization: Bearer {{hrToken}}
+
+### List leave requests filtered by employee
+GET {{baseUrl}}/api/leave-requests?employeeId=1
+Authorization: Bearer {{hrToken}}
+
+### Get single leave request
+GET {{baseUrl}}/api/leave-requests/1
+Authorization: Bearer {{hrToken}}
+
+### Create a leave request (valid employee id)
+POST {{baseUrl}}/api/leave-requests
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "employeeId": 1,
+  "startDate": "2026-06-01",
+  "endDate": "2026-06-05",
+  "type": "Vacation"
+}
+
+### Create a leave request with an employee id that doesn't exist -> 404
+POST {{baseUrl}}/api/leave-requests
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "employeeId": 999999,
+  "startDate": "2026-06-01",
+  "endDate": "2026-06-05",
+  "type": "Vacation"
+}
+
+### Create a leave request with an invalid date range -> 400
+POST {{baseUrl}}/api/leave-requests
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "employeeId": 1,
+  "startDate": "2026-06-10",
+  "endDate": "2026-06-01",
+  "type": "Vacation"
+}
+
+### Approve as HR (replace {id})
+PUT {{baseUrl}}/api/leave-requests/3/status
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "status": "Approved",
+  "reviewerNote": "Approved via .http file"
+}
+
+### Reject as HR (replace {id})
+PUT {{baseUrl}}/api/leave-requests/5/status
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "status": "Rejected",
+  "reviewerNote": "Not enough coverage"
+}
+
+### Try to transition an already-decided request -> 409
+PUT {{baseUrl}}/api/leave-requests/3/status
+Content-Type: application/json
+Authorization: Bearer {{hrToken}}
+
+{
+  "status": "Rejected"
+}
+
+### Delete as HR (replace {id})
+DELETE {{baseUrl}}/api/leave-requests/6
+Authorization: Bearer {{hrToken}}
+
+### Try to delete a non-pending request -> 400
+DELETE {{baseUrl}}/api/leave-requests/3
+Authorization: Bearer {{hrToken}}
+
+### List leave requests with NO token -> 401 (consistent { "error": "..." } shape)
+GET {{baseUrl}}/api/leave-requests
+
+@employeeToken = PASTE_EMPLOYEE_TOKEN_HERE
+
+### List leave requests as a non-HR account -> 403 (valid token, wrong role)
+GET {{baseUrl}}/api/leave-requests
+Authorization: Bearer {{employeeToken}}
