@@ -1,23 +1,52 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+<div class="app-shell">
+    <aside class="app-sidebar">
+        <div class="app-brand">
+            <span class="app-brand__mark">HR</span>
+            <div class="app-brand__text">
+                <span class="app-brand__title">HrPlatform</span>
+                <span class="app-brand__subtitle">People Operations</span>
+            </div>
         </div>
 
-        <article class="content px-4">
-            @Body
-        </article>
+        <NavMenu />
+
+        <div class="app-sidebar__footer">
+            <AuthorizeView>
+                <Authorized>
+                    <div class="sidebar-user">
+                        <span class="avatar sidebar-user__avatar" style="background:var(--color-primary)">@Initials(context.User.Identity?.Name)</span>
+                        <div class="sidebar-user__text">
+                            <span class="sidebar-user__name">@context.User.Identity?.Name</span>
+                            <span class="sidebar-user__role">HR</span>
+                        </div>
+                    </div>
+                    <form method="post" action="/logout">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Sign out</button>
+                    </form>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </aside>
+
+    <main class="app-main">
+        @Body
     </main>
 </div>
 
 <div id="blazor-error-ui">
-    An unhandled error has occurred.
+    ⚠ Something went wrong and this page needs to reload.
     <a href="" class="reload">Reload</a>
     <a class="dismiss">🗙</a>
 </div>
+
+@code {
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(new[] { ' ', '@', '.' }, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0 ? "?" : parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+    }
+}
