@@ -1,0 +1,47 @@
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: hrplatform-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD}"
+      MSSQL_PID: "${MSSQL_PID:-Developer}"
+    ports:
+      - "${SQLSERVER_PORT:-1433}:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"${MSSQL_SA_PASSWORD}\" -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/HrPlatform.Api/Dockerfile
+    container_name: hrplatform-api
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
+      ConnectionStrings__HrPlatformDb: "Server=sqlserver,1433;Database=${DB_NAME:-HrPlatformDb};User Id=sa;Password=${MSSQL_SA_PASSWORD};TrustServerCertificate=True;"
+    ports:
+      - "${API_PORT:-8090}:8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: src/HrPlatform.Web/Dockerfile
+    container_name: hrplatform-web
+    depends_on:
+      - api
+    environment:
+      ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
+      LeaveRequestsApi__BaseUrl: "http://api:8080/"
+    ports:
+      - "${WEB_PORT:-8091}:8080"
+
+volumes:
+  sqlserver-data:
