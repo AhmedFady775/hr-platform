@@ -126,6 +126,17 @@ builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, ApiAuthoriz
 
 var app = builder.Build();
 
+// run as `dotnet HrPlatform.Api.dll --migrate-only` from a dedicated one-shot container/job,
+// never on every API replica's startup -- concurrent replicas would race to apply the same migration
+if (args.Contains("--migrate-only"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    var migrationDb = migrationScope.ServiceProvider.GetRequiredService<LeaveRequestsDbContext>();
+    var migrationLogger = migrationScope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    await MigrateWithRetryAsync(migrationDb, migrationLogger);
+    return;
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -143,40 +154,37 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-using (var scope = app.Services.CreateScope())
-{
-    var db = scope.ServiceProvider.GetRequiredService<LeaveRequestsDbContext>();
-    var startupLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+app.Run();
 
-    // SQL Server can still be starting up even after the Docker healthcheck passes, so retry
-    // with backoff instead of dying on the first attempt -- but still fail loudly if it never comes up
+// SQL Server can still be starting up even after the Docker healthcheck passes, so retry
+// with backoff instead of dying on the first attempt -- but still fail loudly if it never comes up
+static async Task MigrateWithRetryAsync(LeaveRequestsDbContext db, ILogger logger)
+{
     const int maxAttempts = 5;
     for (var attempt = 1; attempt <= maxAttempts; attempt++)
     {
         try
         {
             await DbInitializer.MigrateAndSeedAsync(db);
-            break;
+            return;
         }
         catch (SqlException ex) when (attempt < maxAttempts)
         {
             var delay = TimeSpan.FromSeconds(attempt * 3);
-            startupLogger.LogWarning(ex,
+            logger.LogWarning(ex,
                 "Could not reach the database on startup (attempt {Attempt}/{MaxAttempts}). Retrying in {Delay}s...",
                 attempt, maxAttempts, delay.TotalSeconds);
             await Task.Delay(delay);
         }
         catch (SqlException ex)
         {
-            startupLogger.LogCritical(ex,
+            logger.LogCritical(ex,
                 "Could not reach the database after {MaxAttempts} attempts. Check ConnectionStrings:HrPlatformDb and that SQL Server is running.",
                 maxAttempts);
             throw;
         }
     }
 }
-
-app.Run();
 
 public partial class Program
 {
