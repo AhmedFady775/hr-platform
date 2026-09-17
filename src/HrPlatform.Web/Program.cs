@@ -105,3 +105,7 @@ app.MapPost("/logout", logout);
 app.MapGet("/logout", logout);
 
 app.Run();
+
+public partial class Program
+{
+}
