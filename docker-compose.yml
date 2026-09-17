@@ -67,8 +67,14 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: "${ASPNETCORE_ENVIRONMENT:-Development}"
       LeaveRequestsApi__BaseUrl: "http://api:8080/"
+      DataProtection__KeysPath: "/keys"
     ports:
       - "${WEB_PORT:-8091}:8080"
+    volumes:
+      # Data Protection keys (see Program.cs) -- without this, every restart wipes the
+      # container's filesystem and every signed-in user's cookie becomes undecryptable
+      - web-keys:/keys
 
 volumes:
   sqlserver-data:
+  web-keys:

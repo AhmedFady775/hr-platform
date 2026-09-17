@@ -4,11 +4,27 @@ using HrPlatform.Web.Components;
 using HrPlatform.Web.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+
+// the Data Protection key ring defaults to living inside the container's own filesystem, which
+// docker recreates from scratch on every restart/rebuild -- every sign-in cookie issued before
+// that point becomes undecryptable and everyone gets silently bounced back to /login. Persisting
+// keys to a mounted volume (docker-compose.yml, DataProtection:KeysPath) survives restarts;
+// pinning the application name keeps the key ring's discriminator stable across image rebuilds
+// too. Left unset (e.g. in tests, or `dotnet run` outside Docker), Data Protection falls back to
+// its normal ephemeral default -- there's no volume to point it at in those environments anyway.
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysPath))
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath))
+        .SetApplicationName("HrPlatform.Web");
+}
 
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
