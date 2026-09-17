@@ -4,6 +4,7 @@ using HrPlatform.Api.Services.Auth;
 using HrPlatform.Api.Services.Employees;
 using HrPlatform.Api.Services.LeaveRequests;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
@@ -54,7 +55,13 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .RequireRole("HR")
+        .Build();
+});
 
 var app = builder.Build();
 
