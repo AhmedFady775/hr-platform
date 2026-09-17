@@ -33,4 +33,10 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 app.MapControllers();
 
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<LeaveRequestsDbContext>();
+    await DbInitializer.MigrateAndSeedAsync(db);
+}
+
 app.Run();
