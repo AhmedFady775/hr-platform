@@ -1,0 +1,76 @@
+@page "/login"
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in — HR Leave Requests</PageTitle>
+
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-card__brand">
+            <span class="app-brand__mark">HR</span>
+            <span>Leave Requests</span>
+        </div>
+
+        <h1>Sign in</h1>
+        <p class="text-muted">This system is for HR staff only.</p>
+
+        @if (Error is not null)
+        {
+            <div class="alert alert-danger" role="alert">⚠ @Error</div>
+        }
+
+        <form id="signin-form" method="post" action="/login-submit">
+            <div class="mb-3">
+                <label class="form-label">Username</label>
+                <input class="form-control" name="username" placeholder="hr@company.com" autocomplete="username" required />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Password</label>
+                <input type="password" class="form-control" name="password" placeholder="••••••••" autocomplete="current-password" required />
+            </div>
+
+            <button id="signin-btn" type="submit" class="btn btn-primary w-100">Sign in</button>
+        </form>
+
+        <script>
+            // plain form post, no Blazor here, so the "signing in..." state is just vanilla JS
+            document.getElementById('signin-form').addEventListener('submit', function () {
+                var btn = document.getElementById('signin-btn');
+                btn.setAttribute('disabled', '');
+                btn.innerHTML = '<span class="spinner me-1"></span> Signing in…';
+            });
+        </script>
+
+        <div class="login-demo-hint">
+            <div><strong>Demo HR account</strong></div>
+            <div><code>hr@company.com</code> / <code>Password123!</code></div>
+            <div class="mt-1">
+                (there's also a non-HR demo login, <code>employee@company.com</code> / <code>Password123!</code>,
+                if you want to see this system reject a non-HR account)
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthStateTask { get; set; }
+
+    [SupplyParameterFromQuery(Name = "error")]
+    public string? Error { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthStateTask is null)
+        {
+            return;
+        }
+
+        var state = await AuthStateTask;
+        if (state.User.IsInRole("HR"))
+        {
+            Navigation.NavigateTo("/");
+        }
+    }
+}
