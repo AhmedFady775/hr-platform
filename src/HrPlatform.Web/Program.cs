@@ -52,6 +52,18 @@ app.MapPost("/login-submit", async (HttpContext http, LeaveRequestsApiClient api
     var username = form["username"].ToString();
     var password = form["password"].ToString();
 
+    // required attributes are client-side only, so guard against an empty direct POST too
+    var usernameEmpty = string.IsNullOrWhiteSpace(username);
+    var passwordEmpty = string.IsNullOrWhiteSpace(password);
+    if (usernameEmpty || passwordEmpty)
+    {
+        var field = usernameEmpty && passwordEmpty ? "both" : usernameEmpty ? "username" : "password";
+        var msg = usernameEmpty && passwordEmpty
+            ? "Username and password are required."
+            : usernameEmpty ? "Username is required." : "Password is required.";
+        return Results.Redirect($"/login?error={Uri.EscapeDataString(msg)}&field={field}");
+    }
+
     try
     {
         var result = await api.LoginAsync(new LoginRequestDto { Username = username, Password = password });
@@ -72,6 +84,11 @@ app.MapPost("/login-submit", async (HttpContext http, LeaveRequestsApiClient api
         await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
 
         return Results.Redirect("/");
+    }
+    catch (ApiException ex) when (ex.StatusCode == 401)
+    {
+        // API doesn't say which field was wrong (avoids leaking valid usernames), so flag both
+        return Results.Redirect($"/login?error={Uri.EscapeDataString(ex.Message)}&field=both");
     }
     catch (ApiException ex)
     {

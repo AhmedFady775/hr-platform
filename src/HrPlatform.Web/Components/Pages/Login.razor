@@ -15,7 +15,7 @@
         <h1>Sign in</h1>
         <p class="text-muted">This system is for HR staff only.</p>
 
-        @if (Error is not null)
+        @if (Error is not null && !UsernameInvalid && !PasswordInvalid)
         {
             <div class="alert alert-danger" role="alert">⚠ @Error</div>
         }
@@ -23,12 +23,20 @@
         <form id="signin-form" method="post" action="/login-submit">
             <div class="mb-3">
                 <label class="form-label">Username</label>
-                <input class="form-control" name="username" placeholder="hr@company.com" autocomplete="username" required />
+                <input class="form-control @(UsernameInvalid ? "is-invalid" : "")" name="username" placeholder="hr@company.com" autocomplete="username" required />
+                @if (UsernameInvalid)
+                {
+                    <div class="invalid-feedback">@Error</div>
+                }
             </div>
 
             <div class="mb-3">
                 <label class="form-label">Password</label>
-                <input type="password" class="form-control" name="password" placeholder="••••••••" autocomplete="current-password" required />
+                <input type="password" class="form-control @(PasswordInvalid ? "is-invalid" : "")" name="password" placeholder="••••••••" autocomplete="current-password" required />
+                @if (PasswordInvalid)
+                {
+                    <div class="invalid-feedback">@Error</div>
+                }
             </div>
 
             <button id="signin-btn" type="submit" class="btn btn-primary w-100">Sign in</button>
@@ -59,6 +67,12 @@
 
     [SupplyParameterFromQuery(Name = "error")]
     public string? Error { get; set; }
+
+    [SupplyParameterFromQuery(Name = "field")]
+    public string? Field { get; set; }
+
+    private bool UsernameInvalid => Error is not null && (Field == "username" || Field == "both");
+    private bool PasswordInvalid => Error is not null && (Field == "password" || Field == "both");
 
     protected override async Task OnInitializedAsync()
     {
